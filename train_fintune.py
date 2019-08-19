@@ -10,7 +10,7 @@ import torch.optim as optim
 import torch.utils.data as data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-from models import resnet
+from models import resnet2
 from dataset.FaceLandmarksDataset import *
 from utils import Bar, Logger, AverageMeter,normalizedME, mkdir_p, savefig
 import options 
@@ -73,25 +73,25 @@ def main():
 
 
     #config training dataset 
-    train_transform = transforms.Compose([Resize((102,102)),
+    train_transform = transforms.Compose([Resize((112,112)),
                                           RandomCrop(96),
                                           #RandomFlip(),
-                                          #RandomRotate(),
+                                          RandomRotate(),
                                           ToTensor(96),
                                           Normalize([ 0.5, 0.5, 0.5 ],[ 0.5, 0.5, 0.5 ])] )
 
     trainset = FaceLandmarksDataset([{"root_dir":"/home/hanson/work/FaceLandmark_Pytorch/dataset/WFLW/images",
-                                    "label_file":"/home/hanson/work/FaceLandmark_Pytorch/dataset/WFLW/landmark106p_label.txt"},
+                                    "label_file":"/home/hanson/work/FaceLandmark_Pytorch/dataset/WFLW/landmark5p_label.txt"},
 
                                     {"root_dir":"/home/hanson/work/FaceLandmark_Pytorch/dataset/JD106/images",
-                                    "label_file":"/home/hanson/work/FaceLandmark_Pytorch/dataset/JD106/landmark106p_label.txt"},
+                                    "label_file":"/home/hanson/work/FaceLandmark_Pytorch/dataset/JD106/landmark5p_label.txt"},
 
                                     {"root_dir":"/home/hanson/work/FaceLandmark_Pytorch/dataset/menpoTrain106/images",
-                                    "label_file":"/home/hanson/work/FaceLandmark_Pytorch/dataset/menpoTrain106/landmark106p_label.txt"},
+                                    "label_file":"/home/hanson/work/FaceLandmark_Pytorch/dataset/menpoTrain106/landmark5p_label.txt"},
 
                                     {"root_dir":"/home/hanson/work/FaceLandmark_Pytorch/dataset/menpoTest106/images",
-                                    "label_file":"/home/hanson/work/FaceLandmark_Pytorch/dataset/menpoTest106/landmark106p_label.txt"}],
-                                    point_num=106,
+                                    "label_file":"/home/hanson/work/FaceLandmark_Pytorch/dataset/menpoTest106/landmark5p_label.txt"}],
+                                    point_num=5,
                                     transform=train_transform)
 
     trainloader = data.DataLoader(trainset, batch_size=args.train_batch, shuffle=True, num_workers=4, drop_last=True)
@@ -110,14 +110,20 @@ def main():
     print ("test image %d"%len(testset))
 
     #define training model
-    model=resnet.inference(212).cuda()
+    model=resnet2.inference(10).cuda()
 
     if len(args.snapshot)>0:
         saved_state_dict = torch.load(args.snapshot)
-        model.load_state_dict(saved_state_dict)
+        model_dict = model.state_dict()
+        snapshot = {k: v for k, v in saved_state_dict.items() if k in model_dict}
+        model_dict.update(snapshot)
+        model.load_state_dict(model_dict)
+
+
+
 
     criterion = nn.MSELoss().cuda()
-    optimizer = optim.Adam(params=model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = optim.Adam(params=model.fc_conv1.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     lr_scheduler=MultiStepLR(optimizer, [100,200,300], gamma=0.1, last_epoch=-1)
 
     # Train and val
@@ -131,7 +137,6 @@ def main():
             inputs = inputs.to("cuda:0") 
             labels = sample["landmarks"]
             labels = labels.to("cuda:0")
-            print(labels.shape)
             outputs = model(inputs)
             outputs = outputs.view(outputs.size(0), -1)
             #showlandmark(inputs, labels, outputs)
